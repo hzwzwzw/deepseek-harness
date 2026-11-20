@@ -2,7 +2,7 @@ name: Linux Desktop · Sync, Build & Release
 
 on:
   schedule:
-    - cron: '23 * * * *'
+    - cron: '23 19 * * *'
   push:
     branches: [linux-desktop-build]
   workflow_dispatch:

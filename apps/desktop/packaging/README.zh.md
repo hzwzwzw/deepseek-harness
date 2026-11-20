@@ -195,7 +195,7 @@ Linux 安装包使用 sharp 的 WASM 后端，避开 Electron 的 GLib 符号冲
 
 ### Fork 自动化
 
-`hzwzwzw/deepseek-harness` 中的 [Linux 工作流](../../../.github/workflows/linux-desktop.yml) 在推送 `linux-desktop-build`、手动触发以及每小时 UTC 第 23 分钟运行。该分支设为 fork 的默认分支，以便定时任务运行。工作流将官方 `deepseek-ai/deepseek-harness` 的 master 合并进来，不执行变基或强制推送；冲突时中止合并并将本次运行标为失败，不修改远端分支。`.github/workflows` 由 fork 维护：每次合并均排除上游对工作流的修改、增删，因此同步不需要工作流写权限凭据。fork 的 master 分支保持不变。fork 中继承的上游工作流保持禁用。
+`hzwzwzw/deepseek-harness` 中的 [Linux 工作流](../../../.github/workflows/linux-desktop.yml) 在推送 `linux-desktop-build`、手动触发以及每天北京时间 03:23（UTC 前一天 19:23）运行。该分支设为 fork 的默认分支，以便定时任务运行。工作流将官方 `deepseek-ai/deepseek-harness` 的 master 合并进来，不执行变基或强制推送；冲突时中止合并并将本次运行标为失败，不修改远端分支。`.github/workflows` 由 fork 维护：每次合并均排除上游对工作流的修改、增删，因此同步不需要工作流写权限凭据。fork 的 master 分支保持不变。fork 中继承的上游工作流保持禁用。
 
 新源码提交、尚未发布的失败构建，以及手动选择 `force_build` 的运行，会在 Ubuntu 24.04 x64 和 ARM64 runner 上原生构建，使用锁定的包管理器和 Node 24.22.3。每个构建执行本地配置构建检查、打包运行时冒烟检查和 Linux 回归测试。两种架构均通过后才发布；失败时上一版 release 仍可下载。工作流使用内置 `GITHUB_TOKEN`，不需要个人令牌或官方签名、发布密钥。
 
