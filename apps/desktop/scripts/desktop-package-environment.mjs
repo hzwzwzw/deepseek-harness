@@ -21,16 +21,34 @@ const MACOS_SETTING = /^(?:DSH_DESKTOP_MACOS_(?:SIGNING_IDENTITY|TEAM_ID|SIGNATU
 const AMBIENT_RELEASE_SETTING = /^(?:DSH_DESKTOP_(?:APP_ID|AUTO_UPDATE_ENV|MANDATORY_UPDATE_.*|WINDOWS_.*|MACOS_.*)|APPLE_.*|(?:WIN_)?CSC_.*|DOWNLOAD_(?:TEST|PROD)_.*)$/iu
 
 /**
- * Select local macOS test defaults without reading dotenv files or inheriting release settings.
+ * Select local test defaults without reading dotenv files or inheriting release settings.
  * @param {NodeJS.ProcessEnv} environment Parent environment, retained for build tools and networking.
  * @returns {NodeJS.ProcessEnv} Unsigned build environment with the standard application identifier and no update policy.
  */
-export function localMacOSPackageEnvironment(environment = process.env) {
+function localUnsignedPackageEnvironment(environment) {
   return {
     ...Object.fromEntries(Object.entries(environment).filter(([name]) => !AMBIENT_RELEASE_SETTING.test(name))),
     DSH_DESKTOP_APP_ID: 'com.deepseek.harness',
     DSH_DESKTOP_UNSIGNED: '1',
   }
+}
+
+/**
+ * Select local macOS defaults without signing, dotenv files or release update settings.
+ * @param {NodeJS.ProcessEnv} environment Parent environment for build tools and networking.
+ * @returns {NodeJS.ProcessEnv} Isolated unsigned packaging environment.
+ */
+export function localMacOSPackageEnvironment(environment = process.env) {
+  return localUnsignedPackageEnvironment(environment)
+}
+
+/**
+ * Select local Linux defaults without official release feeds or signing credentials.
+ * @param {NodeJS.ProcessEnv} environment Parent environment for build tools and networking.
+ * @returns {NodeJS.ProcessEnv} Isolated unsigned packaging environment.
+ */
+export function localLinuxPackageEnvironment(environment = process.env) {
+  return localUnsignedPackageEnvironment(environment)
 }
 
 /**
@@ -113,7 +131,7 @@ function requireReadableFile(environment, name) {
 /**
  * Validate the packaging mode before preparation without invoking a token or Apple's services.
  * @param {NodeJS.ProcessEnv} environment Selected local defaults or file-owned release settings.
- * @param {{ platform: 'win32' | 'darwin', arch: string }} target Selected release target.
+ * @param {{ platform: 'win32' | 'darwin' | 'linux', arch: string }} target Selected release target.
  * @param {{ unsigned?: boolean, prepareOnly?: boolean, skipNotarization?: boolean }} options Explicit packaging mode.
  * @returns {void}
  */
@@ -121,6 +139,10 @@ export function validateDesktopPackageEnvironment(environment, target, options =
   resolveDesktopTargetBuildPaths(environment, target.platform, target.arch)
   resolveDesktopAppId(environment)
   resolveNpmRegistry(environment)
+  if (target.platform === 'linux') {
+    if (!options.unsigned) throw new Error('desktop package: Linux supports local unsigned builds only')
+    return
+  }
   if (target.platform !== 'darwin' || !options.unsigned) resolveDesktopPolicyEnvironment(environment)
   if (target.platform === 'darwin') resolveMacOSPackageSettings(environment)
   else resolveWindowsPackageSettings(environment)

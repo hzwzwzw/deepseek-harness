@@ -63,6 +63,8 @@ vi.mock('electron', () => ({
     getAppPath: () => '/development-app',
     getPath: (name: string) => name === 'userData' ? '/desktop-user-data' : `/development-${name}`,
     setAppLogsPath: vi.fn(),
+    setDesktopName: vi.fn(),
+    commandLine: { appendSwitch: vi.fn() },
     getPreferredSystemLanguages: () => ['en-US'],
     on: (name: string, callback: (...args: unknown[]) => void) => { state.appListeners.set(name, callback) },
     quit: state.quit,
@@ -83,6 +85,8 @@ vi.mock('electron', () => ({
     focus = state.focusWorkspace
     moveTop = state.moveTopWorkspace
     hide = vi.fn()
+    setAutoHideMenuBar = vi.fn()
+    setMenuBarVisibility = vi.fn()
     setBackgroundColor = vi.fn()
     show = state.showWorkspace
     showInactive = state.showInactiveWorkspace

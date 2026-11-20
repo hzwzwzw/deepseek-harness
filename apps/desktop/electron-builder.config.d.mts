@@ -60,6 +60,11 @@ export interface DesktopElectronBuilderConfig {
   readonly afterPack: (context: AfterPackContext) => Promise<void>
   readonly afterSign: (context: AfterPackContext) => Promise<void>
   readonly artifactBuildCompleted: (artifact: { readonly file: string }) => Promise<void> | undefined
+  readonly linux: {
+    readonly executableName: string
+    readonly target: readonly string[]
+    readonly desktop: { readonly entry: { readonly StartupWMClass: string } }
+  }
   readonly publish: readonly [{ readonly provider: 'generic', readonly url: string }] | null
 }
 

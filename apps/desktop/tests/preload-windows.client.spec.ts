@@ -3,9 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { DESKTOP_IPC } from '../src/ipc.ts'
 import { syncWindowsAppearance } from '../src/preload-windows.ts'
 
-const send = vi.hoisted(() => vi.fn())
+const { send, installMenu } = vi.hoisted(() => ({ send: vi.fn(), installMenu: vi.fn(() => ({ update: vi.fn(), dispose: vi.fn() })) }))
 vi.mock('electron', () => ({ ipcRenderer: { send } }))
-vi.mock('../src/preload-menu.ts', () => ({ installWindowsMenu: () => ({ update: vi.fn(), dispose: vi.fn() }) }))
+vi.mock('../src/preload-menu.ts', () => ({ installWindowsMenu: installMenu }))
 
 afterEach(() => {
   window.dispatchEvent(new Event('pagehide'))
@@ -15,17 +15,18 @@ afterEach(() => {
   document.body.removeAttribute('data-ds-dark-theme')
   vi.restoreAllMocks()
   send.mockClear()
+  installMenu.mockClear()
 })
 
-it.each(['darwin', 'linux'] as const)('does not install Windows controls on %s', (platform) => {
+it.each(['darwin', 'freebsd'] as const)('does not install Windows controls on %s', (platform) => {
   vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
   syncWindowsAppearance()
   expect(document.documentElement.hasAttribute('data-windows-titlebar')).toBe(false)
   expect(send).not.toHaveBeenCalled()
 })
 
-it('synchronizes live language and palette changes and stops observing a closed document', async () => {
-  vi.spyOn(process, 'platform', 'get').mockReturnValue('win32')
+it.each(['win32', 'linux'] as const)('synchronizes %s overlay colors and stops observing a closed document', async (platform) => {
+  vi.spyOn(process, 'platform', 'get').mockReturnValue(platform)
   vi.spyOn(document, 'readyState', 'get').mockReturnValue('loading')
   vi.spyOn(globalThis, 'getComputedStyle').mockImplementation(() => ({
     backgroundColor: document.body.hasAttribute('data-ds-dark-theme') ? 'oklch(0.2 0 0)' : 'hsl(0 0% 100%)',
@@ -42,6 +43,7 @@ it('synchronizes live language and palette changes and stops observing a closed 
   expect(send).not.toHaveBeenCalled()
   expect(document.documentElement.hasAttribute('data-windows-titlebar')).toBe(true)
   window.dispatchEvent(new Event('DOMContentLoaded'))
+  expect(installMenu).toHaveBeenCalledTimes(platform === 'win32' ? 1 : 0)
   expect(document.documentElement.style.getPropertyValue('--dsh-windows-titlebar-height')).toBe('40px')
   expect(send).toHaveBeenLastCalledWith(DESKTOP_IPC.windowsAppearance, 'en', 'rgba(255, 255, 255, 1)', 'rgba(0, 0, 0, 1)')
   document.documentElement.lang = 'zh-CN'

@@ -181,3 +181,10 @@ it('rejects unsupported archive arguments without emitting upload paths', async 
   expect(result.stderr).toContain('desktop archival: usage: archive-desktop-ci.ts [--split-macos]')
   await expect(readFile(output)).rejects.toMatchObject({ code: 'ENOENT' })
 })
+
+
+it.each(['x64', 'arm64'])('rejects local Linux %s packages before selecting an official publication route', async (arch) => {
+  const env = { DSH_DESKTOP_TARGET_PLATFORM: 'linux', DSH_DESKTOP_TARGET_ARCH: arch }
+  expect(() => resolveDesktopRetentionRunner(env)).toThrow(/no official release destination/u)
+  await expect(retainDesktopCi(env)).rejects.toThrow(/no official release destination/u)
+})

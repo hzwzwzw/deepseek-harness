@@ -27,3 +27,18 @@ export const DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES: Readonly<Record<string, strin
   // The provider declares ^1.3.0; its patch is qualified against 1.3.0.
   '@earendil-works/pi-ai@^1.3.0': '1.3.0',
 }
+
+/**
+ * Select build-time overrides for the target's Electron Node runtime.
+ * Linux uses sharp's WASM backend to avoid Electron's globally linked GLib symbols.
+ * @param platform Target operating system.
+ * @returns Reviewed constraints for the independent production installation.
+ */
+export function desktopRuntimeDependencyOverrides(platform: NodeJS.Platform): Readonly<Record<string, string>> {
+  if (platform !== 'linux') return DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES
+  return {
+    ...DESKTOP_RUNTIME_DEPENDENCY_OVERRIDES,
+    '@img/sharp-linux-x64@0.35.5': 'npm:@img/sharp-wasm32@0.35.5',
+    '@img/sharp-linux-arm64@0.35.5': 'npm:@img/sharp-wasm32@0.35.5',
+  }
+}

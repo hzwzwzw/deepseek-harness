@@ -19,6 +19,7 @@ description: "在本地或 Windows／macOS Actions 中生成 Desktop 安装包�
 - [macOS 自托管打包](#macos-actions)
 - [未签名 Windows 测试安装包](#unsigned-windows-test-installer)
 - [无发布签名的本地 macOS DMG](#local-macos-dmg-without-release-signing)
+- [Linux 本地安装包](#local-linux-packages)
 - [macOS 发布签名与诊断](#macos-release-signing)
 - [目录构建与准备](#directory-and-preparation)
 - [用回环 registry 安装本地 Official 包](#local-official-bundles-from-a-loopback-registry)
@@ -177,6 +178,28 @@ pnpm run package:desktop:mac:x64:unsigned
 添加 `--check` 仅验证本地配置和工具而不构建，或添加 `--dir` 只生成解包应用。DMG 路径为 `apps/desktop/.desktop-build/targets/<target>/unsigned-artifacts/deepseek-harness-<version>-mac-<arch>-unsigned.dmg`。所有检查通过后，命令打印 `DMG:` 及其绝对路径。打开后将应用复制到本地测试目录。
 
 这些命令忽略 `.env.macos` 和继承的发布配置，使用 `com.deepseek.harness` 作为应用 ID，并省略自动更新和强制更新配置。构建工具、标准网络代理与 `DSH_DESKTOP_NPM_REGISTRY` 仍可从 shell 提供。它们跳过 Developer ID 签名、Apple 公证、临时签名钥匙串和公证代理修改。Electron 使用无需证书的本地 ad-hoc 签名，以便修改后的可执行文件能够运行；DMG 不签名。准备阶段和组装后的应用仍执行运行时完整性与冒烟检查。本地构建不生成更新源、ZIP 或发布完成记录，上传命令无法发布这些产物。macOS 可能要求在“系统设置 → 隐私与安全性”中批准打开未经公证的应用。这类构建不放入 Computer Use helper，Computer Use 准备时会报告 helper 缺失。
+
+<a id="local-linux-packages"></a>
+
+## Linux 本地安装包
+
+Linux 构建使用当前源码中的产品版本、本地构建品牌，不配置官方更新源或强制更新策略。每种架构需在对应 Linux 主机上构建：x64 对应 `linux-x64`，arm64 对应 `linux-arm64`；准备阶段会执行目标解释器和原生模块，因此拒绝交叉编译。需要 Node.js >=24.9、锁定版本的 pnpm、Git、tar、Python、make 和 C/C++ 编译器。原生模块安装需要编译工具链。deb 打包器还需要 `libcrypt.so.1`（Fedora 为 `libxcrypt-compat`，Debian/Ubuntu 为 `libcrypt1`）。
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run package:desktop:linux:x64 --check
+pnpm run package:desktop:linux:x64
+```
+
+Linux 安装包使用 sharp 的 WASM 后端，避开 Electron 的 GLib 符号冲突；不支持原生文本渲染和瓦片输出。在 ARM64 主机上将 `x64` 替换为 `arm64`。无需 `.env.windows`、`.env.macos`、证书或更新服务凭据。AppImage 和 deb 文件写入 `apps/desktop/.desktop-build/targets/linux-<arch>/unsigned-artifacts/`。添加 `--dir` 生成未打包目录，或添加 `--prepare-only` 在运行时准备后停止。打包流程会校验归档内容，并使用隔离的 Harness 目录启动 Host；这不代表已验证账号登录或所有桌面环境。更新时手动安装新包。准备好的终端启动器位于 `resources/runtime/cli/bin/dsh`；应用内命令安装器仅支持 macOS 和 Windows。
+
+### Fork 自动化
+
+`hzwzwzw/deepseek-harness` 中的 [Linux 工作流](../../../.github/workflows/linux-desktop.yml) 在推送 `linux-desktop-build`、手动触发以及每小时 UTC 第 23 分钟运行。该分支设为 fork 的默认分支，以便定时任务运行。工作流将官方 `deepseek-ai/deepseek-harness` 的 master 合并进来，不执行变基或强制推送；冲突时中止合并并将本次运行标为失败，不修改远端分支。`.github/workflows` 由 fork 维护：每次合并均排除上游对工作流的修改、增删，因此同步不需要工作流写权限凭据。fork 的 master 分支保持不变。fork 中继承的上游工作流保持禁用。
+
+新源码提交、尚未发布的失败构建，以及手动选择 `force_build` 的运行，会在 Ubuntu 24.04 x64 和 ARM64 runner 上原生构建，使用锁定的包管理器和 Node 24.22.3。每个构建执行本地配置构建检查、打包运行时冒烟检查和 Linux 回归测试。两种架构均通过后才发布；失败时上一版 release 仍可下载。工作流使用内置 `GITHUB_TOKEN`，不需要个人令牌或官方签名、发布密钥。
+
+每个成功构建的源码提交对应一个 `linux-<version>-<commit>` release，包含两种架构的未签名 AppImage/deb、源码信息和 SHA256SUMS；Actions 产物同时保留 14 天。发布先创建草稿，上传全部文件后再公开。已有 release 的源码不会在定时任务中重复构建；未公开的草稿或失败构建会在下次运行时重试。并发运行按顺序执行，不覆盖期间发生的分支修改。请从 fork 的 Releases 页面手动下载更新；这些安装包不使用官方更新器。
 
 <a id="macos-release-signing"></a>
 

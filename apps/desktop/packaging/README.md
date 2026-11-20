@@ -19,6 +19,7 @@ Build Desktop installers locally or through Windows or macOS Actions, choose dep
 - [macOS self-hosted packaging](#macos-actions)
 - [Unsigned Windows test installer](#unsigned-windows-test-installer)
 - [Local macOS DMG without release signing](#local-macos-dmg-without-release-signing)
+- [Local Linux packages](#local-linux-packages)
 - [macOS release signing and diagnostics](#macos-release-signing)
 - [Directory builds and preparation](#directory-and-preparation)
 - [Local Official bundles from a loopback registry](#local-official-bundles-from-a-loopback-registry)
@@ -177,6 +178,28 @@ pnpm run package:desktop:mac:x64:unsigned
 Add `--check` to validate local configuration and tools without building, or `--dir` to stop at the unpacked application. The DMG is `apps/desktop/.desktop-build/targets/<target>/unsigned-artifacts/deepseek-harness-<version>-mac-<arch>-unsigned.dmg`. After all checks pass, the command prints `DMG:` followed by its absolute path. Open it and copy the application to a local test directory.
 
 These commands ignore `.env.macos` and inherited release settings, use `com.deepseek.harness` as the app ID, and omit automatic-update and mandatory-update configuration. Build tools, standard network proxies, and `DSH_DESKTOP_NPM_REGISTRY` remain available from the shell. They skip Developer ID signing, Apple notarization, temporary signing keychains, and notarization proxy changes. Electron receives a local ad-hoc signature without certificates so the modified executable can run; the DMG is unsigned. Both preparation and the assembled application still run runtime integrity and smoke checks. Local builds omit update feeds, ZIPs, and release completion records, and the upload commands cannot publish them. macOS may require approval in System Settings → Privacy & Security to open an unnotarized application. These builds stage no Computer Use helper, so Computer Use reports the missing helper when it prepares.
+
+<a id="local-linux-packages"></a>
+
+## Local Linux packages
+
+Linux builds use the checked-out product version, local build branding and no official update feed or mandatory-update policy. Build each architecture on a matching Linux host: x64 for `linux-x64`, arm64 for `linux-arm64`; cross-compilation is rejected because preparation executes the target interpreters and native modules. Use Node.js >=24.9, the pinned pnpm, Git, tar, Python, make and a C/C++ compiler. Native-module installation requires the compiler toolchain. The deb packager also requires `libcrypt.so.1` (`libxcrypt-compat` on Fedora, `libcrypt1` on Debian/Ubuntu).
+
+```sh
+pnpm install --frozen-lockfile
+pnpm run package:desktop:linux:x64 --check
+pnpm run package:desktop:linux:x64
+```
+
+Linux packages use sharp's WASM backend to avoid Electron's GLib symbol conflict; native text rendering and tile-based output are unavailable. Replace `x64` with `arm64` on an ARM64 host. No `.env.windows`, `.env.macos`, certificate or update-service credentials are required. AppImage and deb files are written under `apps/desktop/.desktop-build/targets/linux-<arch>/unsigned-artifacts/`. Add `--dir` for an unpacked application or `--prepare-only` to stop after runtime preparation. Packaging verifies the archived payload and starts its Host with a private Harness home; this does not qualify account sign-in or every desktop environment. Install a new package manually to update. The prepared terminal launcher is `resources/runtime/cli/bin/dsh`; the application's command installer supports only macOS and Windows.
+
+### Fork automation
+
+The [Linux workflow](../../../.github/workflows/linux-desktop.yml) in `hzwzwzw/deepseek-harness` runs on pushes to `linux-desktop-build`, manually, and hourly at minute 23 UTC. That branch is the fork's default so scheduled runs can execute. It merges official `deepseek-ai/deepseek-harness` master without rebasing or force-pushing; conflicts abort the merge and fail the run without changing the remote branch. The fork owns `.github/workflows`: upstream workflow edits, additions and removals are excluded from each merge, so synchronization does not require workflow-write credentials. The fork's master branch is left untouched. Inherited upstream workflows remain disabled in the fork.
+
+New source commits, failed unpublished builds, and manual `force_build` runs build natively on Ubuntu 24.04 x64 and ARM64 runners with the locked package manager and Node 24.22.3. Each build runs the local-profile build checks, packaged-runtime smoke and Linux regression tests. Both architectures must pass before publication; a failed build leaves the previous release available. The workflow uses the built-in `GITHUB_TOKEN`, without a personal token or official signing/publishing secrets.
+
+Each successful source commit gets a `linux-<version>-<commit>` release containing both architectures' unsigned AppImage/deb packages, source metadata and SHA256SUMS; artifacts are also retained for 14 days. Publication stages a draft before uploading, then makes it visible after all files upload. Existing releases skip scheduled rebuilds; an unpublished draft or failed build is retried on the next run. Concurrent runs are serialized, and concurrent branch edits are never overwritten. Download updates manually from the fork's Releases page; these packages do not use the official updater.
 
 <a id="macos-release-signing"></a>
 

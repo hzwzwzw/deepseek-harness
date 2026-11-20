@@ -1,5 +1,7 @@
 {
   "name": "@deepseek-ai/dsh-desktop",
+  "homepage": "https://github.com/deepseek-ai/deepseek-harness",
+  "desktopName": "deepseek-harness",
   "description": "Electron desktop shell for a bundled dsh runtime and external plugins",
   "version": "0.2.2-rc.5",
   "private": true,
@@ -45,7 +47,11 @@
     "upload:latest:mac:arm64": "tsx scripts/upload-target.ts mac-arm64 --latest",
     "upload:latest:mac:x64": "tsx scripts/upload-target.ts mac-x64 --latest",
     "upload:latest:win:x64": "tsx scripts/upload-target.ts win-x64 --latest",
-    "purge:latest": "tsx scripts/upload-target.ts --latest --purge-only"
+    "purge:latest": "tsx scripts/upload-target.ts --latest --purge-only",
+    "package:linux:x64": "tsx scripts/package-target.ts linux-x64",
+    "package:linux:x64:dir": "tsx scripts/package-target.ts linux-x64 --dir",
+    "package:linux:arm64": "tsx scripts/package-target.ts linux-arm64",
+    "package:linux:arm64:dir": "tsx scripts/package-target.ts linux-arm64 --dir"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",

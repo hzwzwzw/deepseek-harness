@@ -1,0 +1,176 @@
+name: Linux Desktop · Sync, Build & Release
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  push:
+    branches: [linux-desktop-build]
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: Rebuild even if this commit already has a published Linux release
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-desktop-sync-build-release
+  cancel-in-progress: false
+
+env:
+  LINUX_BRANCH: linux-desktop-build
+  DSH_TELEMETRY_DISABLED: '1'
+
+jobs:
+  sync:
+    if: github.repository == 'hzwzwzw/deepseek-harness'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.sync.outputs.sha }}
+      upstream: ${{ steps.sync.outputs.upstream }}
+      version: ${{ steps.sync.outputs.version }}
+      tag: ${{ steps.sync.outputs.tag }}
+      build: ${{ steps.release.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: linux-desktop-build
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.22.3'
+      - name: Test upstream synchronization
+        run: node --test .github/scripts/sync-linux-upstream.test.mjs
+      - name: Merge official master without overwriting Linux changes
+        id: sync
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          bash .github/scripts/sync-linux-upstream.sh
+      - name: Build new commits and retry unpublished builds
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ steps.sync.outputs.tag }}
+          FORCE_BUILD: ${{ inputs.force_build || false }}
+        run: |
+          draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || printf 'missing')
+          if [[ "$FORCE_BUILD" == true || "$draft" != false ]]; then
+            echo 'build=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'build=false' >> "$GITHUB_OUTPUT"
+            echo 'This source commit already has a published Linux release; no build needed.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.build == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    env:
+      DSH_GATE_CONCURRENCY: '1'
+      NODE_OPTIONS: --max-old-space-size=6144
+      DSH_DESKTOP_TARGET_PLATFORM: linux
+      DSH_DESKTOP_TARGET_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+          persist-credentials: false
+      - name: Install Linux packaging and runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential python3 pkg-config libcrypt1 libgtk-3-0t64 libnss3 libasound2t64 libxss1 libxtst6 libgbm1 libnotify4 libatspi2.0-0t64 libsecret-1-0
+          df -h .
+      - uses: pnpm/action-setup@b307475762933b98ed359c036b0e51f26b63b74b # v5.0.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24.22.3'
+          cache: pnpm
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate Linux target and toolchain
+        run: pnpm run "package:desktop:linux:$DSH_DESKTOP_TARGET_ARCH" --check
+      - name: Build and package AppImage and deb
+        run: pnpm run "package:desktop:linux:$DSH_DESKTOP_TARGET_ARCH"
+      - name: Check packaged runtime
+        working-directory: apps/desktop
+        run: pnpm exec tsx scripts/smoke-packaged-runtime.ts --unsigned
+      - name: Test Linux adaptations
+        run: >-
+          pnpm exec vitest run
+          apps/desktop/tests/cli-launcher.spec.ts
+          apps/desktop/tests/package-target.spec.ts
+          apps/desktop/tests/desktop-build-paths.spec.ts
+          apps/desktop/tests/desktop-package-environment.spec.ts
+          apps/desktop/tests/prepare-runtime-patches.spec.ts
+          apps/desktop/tests/runtime-preparation.spec.ts
+          apps/desktop/tests/installer-packaging.spec.ts
+          apps/desktop/tests/main-startup.spec.ts
+          apps/desktop/tests/welcome-startup.spec.ts
+          apps/desktop/tests/welcome-window.spec.ts
+          apps/desktop/tests/preload-platform.client.spec.ts
+          apps/desktop/tests/preload-windows.client.spec.ts
+          packages/document/office-kit/tests/engine-package.spec.ts
+          --maxWorkers=2
+      - name: Collect installers and source metadata
+        env:
+          SOURCE_SHA: ${{ needs.sync.outputs.sha }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream }}
+        run: |
+          mkdir -p dist
+          source="apps/desktop/.desktop-build/targets/linux-$DSH_DESKTOP_TARGET_ARCH/unsigned-artifacts"
+          cp "$source/"*.AppImage "$source/"*.deb dist/
+          printf 'source=%s\nupstream=%s\narch=%s\nrun=%s/%s/actions/runs/%s\n' "$SOURCE_SHA" "$UPSTREAM_SHA" "$DSH_DESKTOP_TARGET_ARCH" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" > "dist/source-$DSH_DESKTOP_TARGET_ARCH.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-desktop-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    needs: [sync, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: linux-desktop-*
+          path: dist
+          merge-multiple: true
+      - name: Publish verified Linux installers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.sync.outputs.tag }}
+          SOURCE_SHA: ${{ needs.sync.outputs.sha }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream }}
+          VERSION: ${{ needs.sync.outputs.version }}
+        run: |
+          cd dist
+          sha256sum ./*.AppImage ./*.deb ./source-*.txt > SHA256SUMS
+          printf 'Linux x64 and ARM64 AppImage/deb builds of DeepSeek Harness %s.\n\nSource: `%s`\n\nOfficial upstream: `%s`\n\nIncludes the Linux build, integrated window controls, and desktop icon adaptations. Unsigned community builds; official automatic updates are disabled. Download the package matching your CPU and check SHA256SUMS.\n' "$VERSION" "$SOURCE_SHA" "$UPSTREAM_SHA" > release-notes.txt
+          if ! gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --target "$SOURCE_SHA" --title "DeepSeek Harness Linux $VERSION · ${SOURCE_SHA:0:12}" --notes-file release-notes.txt --draft
+          fi
+          gh release upload "$RELEASE_TAG" ./*.AppImage ./*.deb ./source-*.txt SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest --notes-file release-notes.txt
+          printf 'Published [%s](%s/%s/releases/tag/%s).\n' "$RELEASE_TAG" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$RELEASE_TAG" >> "$GITHUB_STEP_SUMMARY"

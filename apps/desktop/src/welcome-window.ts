@@ -3,7 +3,7 @@ import type { SignInAttemptId } from '@deepseek-ai/dsh-deepseek-account/types'
 
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { app, BrowserWindow, ipcMain, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, ipcMain, nativeTheme, type BrowserWindowConstructorOptions, type IpcMainInvokeEvent } from 'electron'
 import type { DesktopLocale } from './locale.ts'
 import { WELCOME_IPC, type WelcomeOperations } from './welcome-api.ts'
 
@@ -24,12 +24,18 @@ export function welcomeWindowOptions(platform: NodeJS.Platform, locale: DesktopL
     fullscreenable: false,
     show: false,
     title: locale.messages.welcomeTitle,
-    backgroundColor: platform === 'darwin' || platform === 'win32' ? '#00000000' : '#FFFFFF',
+    backgroundColor: platform === 'darwin' || platform === 'win32' ? '#00000000' : nativeTheme.shouldUseDarkColors ? '#18191C' : '#FFFFFF',
     ...(platform === 'darwin' ? {
       titleBarStyle: 'hidden',
       trafficLightPosition: { x: 21, y: 21 },
       vibrancy: 'menu',
       visualEffectState: 'active',
+    } as const : {}),
+    ...(platform === 'linux' ? {
+      icon: app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'resources', 'icon-windows.png'),
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: nativeTheme.shouldUseDarkColors ? '#18191C' : '#FFFFFF',
+        symbolColor: nativeTheme.shouldUseDarkColors ? '#F9FAFB' : '#0F1115', height: 42 },
     } as const : {}),
     ...(platform === 'win32' ? {
       titleBarStyle: 'hidden',
@@ -59,6 +65,18 @@ let disposeActiveHandlers: (() => void) | undefined
 export async function openWelcomeWindow(locale: DesktopLocale, operations: WelcomeOperations): Promise<BrowserWindow> {
   const options = welcomeWindowOptions(process.platform, locale)
   const window = new BrowserWindow(options)
+  if (process.platform === 'linux') {
+    window.setAutoHideMenuBar(false)
+    window.setMenuBarVisibility(false)
+    const updateAppearance = (): void => {
+      if (window.isDestroyed()) return
+      const color = nativeTheme.shouldUseDarkColors ? '#18191C' : '#FFFFFF'
+      window.setBackgroundColor(color)
+      window.setTitleBarOverlay({ color, symbolColor: nativeTheme.shouldUseDarkColors ? '#F9FAFB' : '#0F1115' })
+    }
+    nativeTheme.on('updated', updateAppearance)
+    window.once('closed', () => { nativeTheme.removeListener('updated', updateAppearance) })
+  }
   disposeActiveHandlers?.()
   let active = true
   const disposeHandlers = (): void => {

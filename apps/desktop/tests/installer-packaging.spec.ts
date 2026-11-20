@@ -125,3 +125,16 @@ describe('installer preparation preserves application dependencies', () => {
     for (const name of referenced) expect(packaged.has(`lib/${name}`)).toBe(true)
   })
 })
+
+
+it.each(['x64', 'arm64'])('packages Linux %s with its own executable and no official update policy', async (arch) => {
+  const { createElectronBuilderConfig } = await import('../scripts/electron-builder-config.mjs')
+  const config = createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.deepseek.harness', DSH_DESKTOP_UNSIGNED: '1' }, 'linux', arch)
+  expect(config.linux).toMatchObject({ target: ['AppImage', 'deb'], executableName: 'deepseek-harness' })
+  const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { desktopName: string }
+  expect(manifest.desktopName).toBe(config.linux.desktop.entry.StartupWMClass)
+  expect(config.publish).toBeNull()
+  expect(config.extraMetadata).not.toHaveProperty('dshMandatoryUpdatePolicy')
+  expect(config.directories.output).toContain(`linux-${arch}`)
+  expect(() => createElectronBuilderConfig({ DSH_DESKTOP_APP_ID: 'com.deepseek.harness' }, 'linux', arch)).toThrow(/local unsigned/u)
+})

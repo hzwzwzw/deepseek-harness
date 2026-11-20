@@ -109,6 +109,7 @@ function checkKoffi() {
 /** Encode and decode a pixel through the packaged libvips binary. */
 async function checkSharp() {
   const sharp = requireRuntime('sharp')
+  if (process.platform === 'linux') assert.equal(typeof sharp.versions.emscripten, 'string', 'Linux Electron must use sharp WASM')
   const pixel = Buffer.from([17, 103, 231])
   const png = await sharp(pixel, { raw: { width: 1, height: 1, channels: 3 } }).png().toBuffer()
   const decoded = await sharp(png).raw().toBuffer({ resolveWithObject: true })

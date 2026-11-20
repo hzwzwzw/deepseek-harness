@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { loadDesktopPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
+import { loadDesktopPackageEnvironment, localLinuxPackageEnvironment, localMacOSPackageEnvironment, validateDesktopPackageEnvironment } from '../scripts/desktop-package-environment.mjs'
 import { resolveWindowsPackageSettings } from '../scripts/windows-package-settings.mjs'
 
 const WINDOWS = { platform: 'win32', arch: 'x64' } as const
@@ -387,4 +387,16 @@ it.each(['', '0', '9', 'invalid'])('rejects unsupported workflow ZIP choice %j',
     expect(() => loadDesktopPackageEnvironment('darwin', { PACKAGE_MACOS_ZIP_COMPRESSION_LEVEL: level }, directory))
       .toThrow('workflow ZIP compression must be 3 or 7')
   })
+})
+
+
+it('isolates local Linux builds from official update policy and release credentials', () => {
+  const environment = localLinuxPackageEnvironment({ ...RELEASE, ...MAC_IDENTITY, PATH: '/usr/bin', CSC_LINK: 'secret.p12' })
+  expect(environment).toEqual({ PATH: '/usr/bin', DSH_DESKTOP_APP_ID: 'com.deepseek.harness', DSH_DESKTOP_UNSIGNED: '1' })
+  expect(() => {
+    validateDesktopPackageEnvironment(environment, { platform: 'linux', arch: 'x64' }, { unsigned: true })
+  }).not.toThrow()
+  expect(() => {
+    validateDesktopPackageEnvironment(environment, { platform: 'linux', arch: 'x64' })
+  }).toThrow(/local unsigned/u)
 })

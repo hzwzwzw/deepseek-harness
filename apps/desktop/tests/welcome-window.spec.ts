@@ -10,6 +10,7 @@ const electron = vi.hoisted(() => ({
 }))
 vi.mock('electron', () => ({
   app: { getAppPath: () => electron.root },
+  nativeTheme: { shouldUseDarkColors: false, on: vi.fn(), removeListener: vi.fn() },
   BrowserWindow: vi.fn(function (options: unknown) { return electron.create(options) }),
   ipcMain: {
     handle: (name: string, handler: (event: unknown, value?: unknown, attributes?: unknown) => Promise<unknown>) => {
@@ -33,6 +34,8 @@ function createWindow() {
     isDestroyed: vi.fn().mockReturnValue(false),
     destroy: vi.fn(),
     show: vi.fn(),
+    setAutoHideMenuBar: vi.fn(),
+    setMenuBarVisibility: vi.fn(),
     once: vi.fn<(name: string, callback: () => void) => void>(),
   }
 }
@@ -72,6 +75,9 @@ describe('desktop welcome window', () => {
       expect(options.backgroundColor).toBe('#FFFFFF')
       expect(options.vibrancy).toBeUndefined()
       expect(options.backgroundMaterial).toBeUndefined()
+      expect(options.titleBarStyle).toBe('hidden')
+      expect(options.titleBarOverlay).toMatchObject({ height: 42 })
+      expect(options.icon).toBe(join(electron.root, 'resources', 'icon-windows.png'))
     }
   })
 
@@ -138,7 +144,7 @@ describe('desktop welcome window', () => {
     await expect(copy(own, 42)).rejects.toThrow('invalid attempt')
     await copy(own, 'attempt')
     expect(copySignInLink).toHaveBeenCalledExactlyOnceWith('attempt')
-    window.once.mock.calls[0]![1]()
+    window.once.mock.calls.filter(([event]) => event === 'closed').forEach(([, close]) => { close() })
     expect(electron.handlers.size).toBe(0)
   })
 
@@ -154,8 +160,8 @@ describe('desktop welcome window', () => {
     await opening
     expect(previous.show).not.toHaveBeenCalled()
     expect(current.show).toHaveBeenCalledOnce()
-    previous.once.mock.calls[0]![1]()
-    current.once.mock.calls[0]![1]()
+    previous.once.mock.calls.filter(([event]) => event === 'closed').forEach(([, close]) => { close() })
+    current.once.mock.calls.filter(([event]) => event === 'closed').forEach(([, close]) => { close() })
   })
 
   it('replaces handlers before the previous native window emits closed', async () => {
@@ -171,12 +177,12 @@ describe('desktop welcome window', () => {
     const currentHandler = electron.handlers.get(WELCOME_IPC.start)!
     await expect(previousHandler(previousSender)).rejects.toThrow('unowned frame')
     await expect(currentHandler(previousSender)).rejects.toThrow('unowned frame')
-    previous.once.mock.calls[0]![1]()
+    previous.once.mock.calls.filter(([event]) => event === 'closed').forEach(([, close]) => { close() })
     expect(electron.handlers.get(WELCOME_IPC.start)).toBe(currentHandler)
     await currentHandler({ sender: current.webContents, senderFrame: current.webContents.mainFrame })
     expect(currentStart).toHaveBeenCalledOnce()
     expect(previousStart).not.toHaveBeenCalled()
-    current.once.mock.calls[0]![1]()
+    current.once.mock.calls.filter(([event]) => event === 'closed').forEach(([, close]) => { close() })
     expect(electron.handlers.size).toBe(0)
   })
 

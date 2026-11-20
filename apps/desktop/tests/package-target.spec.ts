@@ -26,7 +26,7 @@ describe('desktop package target', () => {
   })
 
   it('rejects unsupported targets and hosts before building', () => {
-    expect(() => resolveDesktopPackageTarget('linux-x64', 'linux', 'x64')).toThrow(/unsupported target/u)
+    expect(() => resolveDesktopPackageTarget('linux-riscv64', 'linux', 'riscv64')).toThrow(/unsupported target/u)
     expect(() => resolveDesktopPackageTarget('win-x64', 'darwin', 'arm64')).toThrow(/Windows x64/u)
     expect(() => resolveDesktopPackageTarget('mac-arm64', 'darwin', 'x64')).toThrow(/Apple Silicon/u)
     expect(() => resolveDesktopPackageTarget('mac-arm64', 'linux', 'arm64')).toThrow(/macOS/u)
@@ -156,4 +156,18 @@ it('allows skipping notarization only for signed macOS packages', () => {
     expect(() => parseDesktopPackageInvocation(['mac-arm64', '--skip-notarization', flag], 'darwin', 'arm64')).toThrow(/requires a signed macOS build/u)
   }
   expect(() => parseDesktopPackageInvocation(['win-x64', '--skip-notarization'], 'win32', 'x64')).toThrow(/requires a signed macOS build/u)
+})
+
+
+describe('Linux desktop packaging', () => {
+  it.each(['x64', 'arm64'] as const)('builds a local unsigned %s package on the matching host', (arch) => {
+    const invocation = parseDesktopPackageInvocation([`linux-${arch}`], 'linux', arch)
+    expect(invocation).toMatchObject({ unsigned: true, target: { platform: 'linux', arch } })
+    expect(desktopElectronBuilderArguments(invocation.target, true)).toContain('--linux')
+    expect(desktopElectronBuilderArguments(invocation.target, true)).toContain(`--${arch}`)
+    expect(parseDesktopPackageInvocation(['--prepare-only'], 'linux', arch)).toMatchObject({ unsigned: true, prepareOnly: true })
+    expect(() => resolveDesktopPackageTarget(`linux-${arch}`, 'darwin', arch)).toThrow(/requires a Linux/u)
+    expect(() => resolveDesktopPackageTarget(`linux-${arch}`, 'linux', arch === 'x64' ? 'arm64' : 'x64')).toThrow(/requires a Linux/u)
+    expect(() => parseDesktopPackageInvocation([`linux-${arch}`, '--skip-notarization'], 'linux', arch)).toThrow(/requires a signed macOS/u)
+  })
 })

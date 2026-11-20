@@ -8,6 +8,7 @@ import { afterEach, expect, it } from 'vitest'
 import yaml from 'js-yaml'
 import { pnpmCommand } from '../../../scripts/release/process.ts'
 import { prepareRuntimePatches, verifyRuntimePatches } from '../scripts/prepare-runtime-patches.ts'
+import { desktopRuntimeDependencyOverrides } from '../scripts/runtime-patch-policy.ts'
 import type { DesktopRuntimePatch } from '../scripts/runtime-patch-policy.ts'
 
 const roots: string[] = []
@@ -149,3 +150,16 @@ it.each([false, true])('pnpm applies runtime-only bytes and rejects an inapplica
   }
   expect(existsSync(join(source, 'node_modules'))).toBe(false)
 }, 45_000)
+
+it.each(['linux', 'darwin', 'win32'] as const)('stages sharp WASM only for Linux Electron (%s)', (platform) => {
+  const { project } = fixture()
+  const repository = resolve(import.meta.dirname, '../../..')
+  prepareRuntimePatches(project, repository, undefined, desktopRuntimeDependencyOverrides(platform))
+  const settings = yaml.load(readFileSync(join(project, 'pnpm-workspace.yaml'), 'utf8')) as { overrides: Record<string, string> }
+  const selected = Object.entries(settings.overrides).filter(([name]) => name.startsWith('@img/sharp-linux-'))
+  if (platform === 'linux') expect(selected).toEqual([
+    ['@img/sharp-linux-x64@0.35.5', 'npm:@img/sharp-wasm32@0.35.5'],
+    ['@img/sharp-linux-arm64@0.35.5', 'npm:@img/sharp-wasm32@0.35.5'],
+  ])
+  else expect(selected).toEqual([])
+})

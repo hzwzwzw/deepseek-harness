@@ -186,6 +186,11 @@ function reportFatal(error: unknown, source: CrashReportSource): void {
   })
 }
 
+if (process.platform === 'linux') {
+  app.setDesktopName('deepseek-harness.desktop')
+  app.commandLine.appendSwitch('class', 'deepseek-harness')
+}
+
 protocol.registerSchemesAsPrivileged([{
   scheme: SCHEME,
   privileges: {
@@ -268,7 +273,10 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     minWidth: 520,
     minHeight: 600,
     show,
-    ...(process.platform === 'win32' && primary ? {
+    ...(process.platform === 'linux' ? {
+      icon: app.isPackaged ? join(process.resourcesPath, 'icon.png') : join(app.getAppPath(), 'resources', 'icon-windows.png'),
+    } : {}),
+    ...((process.platform === 'win32' || process.platform === 'linux') && primary ? {
       backgroundColor: chromeFallbackFill(),
       titleBarStyle: 'hidden' as const,
       titleBarOverlay: { height: WINDOWS_TITLEBAR_HEIGHT, color: chromeFallbackFill(),
@@ -295,11 +303,22 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
       devTools: true,
     },
   })
+  if (process.platform === 'linux') {
+    window.setAutoHideMenuBar(false)
+    window.setMenuBarVisibility(false)
+    // Keep a window-scoped quit command available after removing the native menubar.
+    window.webContents.on('before-input-event', (event, input) => {
+      if (input.type === 'keyDown' && input.control && !input.alt && !input.meta && input.key.toLowerCase() === 'q') {
+        event.preventDefault()
+        app.quit()
+      }
+    })
+  }
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (['http:', 'https:'].includes(new URL(url).protocol)) void shell.openExternal(url)
     return { action: 'deny' }
   })
-  if (process.platform === 'darwin' || process.platform === 'win32') {
+  if (process.platform === 'darwin' || process.platform === 'win32' || process.platform === 'linux') {
     // Fullscreen hides native window controls; overlays drop their caption clearance.
     const sendFullscreen = (): void => {
       if (!window.isDestroyed()) window.webContents.send(DESKTOP_IPC.windowFullscreen, window.isFullScreen())
@@ -310,7 +329,7 @@ function createWindow(preload: string, show = false, primary = false): BrowserWi
     // current state so a fullscreen reload does not fall back to windowed CSS.
     window.webContents.on('did-finish-load', sendFullscreen)
   }
-  if (process.platform === 'win32' && primary) {
+  if ((process.platform === 'win32' || process.platform === 'linux') && primary) {
     const updateBackground = (): void => {
       if (!window.isDestroyed()) window.setBackgroundColor(chromeFallbackFill())
     }
@@ -1232,7 +1251,7 @@ async function main(): Promise<void> {
     devToolsF12Shortcut,
   ]
   const refreshApplicationMenu = (): void => {
-    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32'
+    Menu.setApplicationMenu(Menu.buildFromTemplate(process.platform === 'win32' || process.platform === 'linux'
       ? windowsDevToolsShortcuts : [{
         label: darwin ? app.name : currentDesktopLocale().messages.application,
         submenu: [...applicationItems(), devToolsF12Shortcut],
@@ -1265,7 +1284,7 @@ async function main(): Promise<void> {
     ...(process.platform === 'win32' ? { icon: nativeImage.createFromPath(trayIconPath) } : {}),
   })
 
-  if (process.platform === 'win32') {
+  if (process.platform === 'win32' || process.platform === 'linux') {
     ipcMain.handle(DESKTOP_IPC.windowsMenu, (event, name: unknown, x: unknown, y: unknown) => {
       assertDesktopSender(event, ['app'])
       if (mainWindow === undefined || event.sender !== mainWindow.webContents
